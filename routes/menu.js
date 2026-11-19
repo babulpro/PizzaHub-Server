@@ -400,12 +400,12 @@ router.get('/admin/all', verifyToken, verifyRole('admin'), async (req, res) => {
 router.patch('/admin/:id/status', verifyToken, verifyRole('admin'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status } = req.body || {};
 
-    if (!['approved', 'rejected', 'inactive', 'pending'].includes(status)) {
+    if (!status || !['approved', 'rejected', 'inactive', 'pending'].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: "Status must be 'approved', 'rejected', 'inactive', or 'pending'.",
+        message: "Please provide a valid status: 'approved', 'rejected', 'inactive', or 'pending' in the request body.",
       });
     }
 
