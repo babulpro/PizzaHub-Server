@@ -12,7 +12,7 @@ const router = express.Router();
  */
 router.post('/token', async (req, res) => {
   try {
-    const { email, name, role = 'customer', businessName } = req.body;
+    const { email, name, role = 'customer', businessName } = req.body || {};
 
     if (!email) {
       return res.status(400).json({

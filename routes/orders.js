@@ -15,7 +15,7 @@ const router = express.Router();
  */
 router.post('/', verifyToken, async (req, res) => {
   try {
-    const { itemId, deliveryDate, deliveryAddress, message } = req.body;
+    const { itemId, deliveryDate, deliveryAddress, message } = req.body || {};
 
     // Security check: Admins cannot place food orders
     if (req.user.role === 'admin') {

@@ -136,7 +136,7 @@ router.post('/', verifyToken, verifyRole('vendor'), async (req, res) => {
       prepTime,
       isSpicy,
       isVegetarian,
-    } = req.body;
+    } = req.body || {};
 
     // Validation
     if (!itemName || !category || !description || !price || !location) {
@@ -217,7 +217,7 @@ router.patch('/:id', verifyToken, verifyRole('vendor'), async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden: You do not own this menu item.' });
     }
 
-    const { itemName, category, description, price, location, images, prepTime, isSpicy, isVegetarian } = req.body;
+    const { itemName, category, description, price, location, images, prepTime, isSpicy, isVegetarian } = req.body || {};
 
     const updateFields = {};
     if (itemName) updateFields.itemName = itemName.trim();
@@ -495,6 +495,11 @@ router.get('/:id', async (req, res) => {
 
     if (!items || items.length === 0) {
       return res.status(404).json({ success: false, message: 'Menu item not found.' });
+    }
+
+    // A rejected item must never be visible to customers
+    if (items[0].status === 'rejected') {
+      return res.status(404).json({ success: false, message: 'Menu item not found or unavailable.' });
     }
 
     res.json({

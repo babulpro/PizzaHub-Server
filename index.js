@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.js'; // 1. Added import
 import menuRoutes from './routes/menu.js';
 import orderRoutes from './routes/orders.js';
 import stripeRoutes from './routes/stripe.js';
+import userRoutes from './routes/user.js';
 
 dotenv.config();
 
@@ -56,7 +57,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/menu', menuRoutes); 
 app.use('/api/orders', orderRoutes);
 app.use('/api/stripe', stripeRoutes);
-
+app.use('/api/users', userRoutes);
 // 5. Global 404 Route Handler
 app.use((req, res) => {
   res.status(404).json({
