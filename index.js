@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
 import authRoutes from './routes/auth.js'; // 1. Added import
+import menuRoutes from './routes/menu.js';
 
 dotenv.config();
 
@@ -49,7 +50,11 @@ app.get('/api/health', (req, res) => {
 });
 
 // 4. Application Routes
-app.use('/api/auth', authRoutes); // 2. Mounted auth routes
+app.use('/api/auth', authRoutes); 
+
+// 5. Application Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/menu', menuRoutes); // <-- Add this
 
 // 5. Global 404 Route Handler
 app.use((req, res) => {
