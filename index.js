@@ -51,14 +51,26 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// 4. Application Routes
+// 4. Serverless DB Connection Middleware (Ensures MongoDB is connected on Vercel)
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('Database connection error:', err);
+    res.status(500).json({ success: false, message: 'Database connection failed' });
+  }
+});
+
+// 5. Application Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/menu', menuRoutes); 
 app.use('/api/orders', orderRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/transactions', transactionRoutes)
-// 5. Global 404 Route Handler
+app.use('/api/transactions', transactionRoutes);
+
+// 6. Global 404 Route Handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -66,7 +78,7 @@ app.use((req, res) => {
   });
 });
 
-// 6. Centralized Error Handler
+// 7. Centralized Error Handler
 app.use((err, req, res, next) => {
   console.error('Unhandled Server Error:', err);
   const statusCode = err.statusCode || 500;
@@ -77,7 +89,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 7. Start Server after connecting to MongoDB
+// 8. Start Server (Only in local environment, not inside Vercel serverless functions)
 async function startServer() {
   try {
     await connectDB();
@@ -91,4 +103,8 @@ async function startServer() {
   }
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
