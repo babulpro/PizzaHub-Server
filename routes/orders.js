@@ -334,7 +334,78 @@ router.patch('/:id/status', verifyToken, verifyRole('vendor'), async (req, res) 
 });
 
 // ==========================================
-// 3. SINGLE ORDER DETAILS
+// 3. ADMIN ROUTES
+// ==========================================
+
+/**
+ * GET /api/orders/admin/all
+ * Admin views all platform orders with customer and vendor details
+ * Query params: ?status=pending
+ */
+router.get('/admin/all', verifyToken, verifyRole('admin'), async (req, res) => {
+  try {
+    const { status } = req.query;
+    const matchQuery = {};
+
+    if (status && status !== 'all') {
+      matchQuery.status = status;
+    }
+
+    const orders = await collections.orders
+      .aggregate([
+        { $match: matchQuery },
+        {
+          $lookup: {
+            from: 'menuItems',
+            localField: 'itemId',
+            foreignField: '_id',
+            as: 'item',
+          },
+        },
+        { $unwind: { path: '$item', preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'customerId',
+            foreignField: '_id',
+            as: 'customer',
+          },
+        },
+        { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'vendorId',
+            foreignField: '_id',
+            as: 'vendor',
+          },
+        },
+        { $unwind: { path: '$vendor', preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            'customer.password': 0,
+            'customer.isBlocked': 0,
+            'vendor.password': 0,
+            'vendor.isBlocked': 0,
+          },
+        },
+        { $sort: { createdAt: -1 } },
+      ])
+      .toArray();
+
+    res.json({
+      success: true,
+      count: orders.length,
+      data: orders,
+    });
+  } catch (error) {
+    console.error('Error fetching admin orders:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// 4. SINGLE ORDER DETAILS (Must stay after specific sub-routes)
 // ==========================================
 
 /**

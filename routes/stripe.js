@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import Stripe from 'stripe';
 import { ObjectId } from 'mongodb';
@@ -31,9 +32,8 @@ router.post(
 
       const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
 
-      // Create Stripe Checkout Session
+      // Create Stripe Checkout Session (modern dynamic payment methods)
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
         mode: 'subscription',
         line_items: [
           {
@@ -75,6 +75,77 @@ router.post(
     }
   }
 );
+
+/**
+ * GET /api/stripe/verify-session/:sessionId
+ * Direct verification on redirect back from Stripe checkout.
+ * Upgrades vendor to Premium immediately if payment succeeded.
+ */
+router.get('/verify-session/:sessionId', verifyToken, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    if (!sessionId) {
+      return res.status(400).json({ success: false, message: 'Session ID is required.' });
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    if (session.payment_status !== 'paid') {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment has not been completed yet.',
+        payment_status: session.payment_status,
+      });
+    }
+
+    const vendorId = session.metadata?.vendorId || req.user._id.toString();
+
+    // Idempotency: avoid duplicate transaction logs
+    const existingTxn = await collections.transactions.findOne({
+      stripeSessionId: session.id,
+    });
+
+    if (!existingTxn) {
+      const now = new Date();
+      const expiresAt = new Date(now);
+      expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+      const newTransaction = {
+        vendorId: new ObjectId(vendorId),
+        plan: 'premium',
+        amount: (session.amount_total || 2900) / 100,
+        currency: (session.currency || 'usd').toUpperCase(),
+        stripeSessionId: session.id,
+        stripeSubscriptionId: session.subscription || `sub_${session.id.slice(0, 14)}`,
+        status: 'completed',
+        createdAt: now,
+      };
+
+      await collections.transactions.insertOne(newTransaction);
+
+      await collections.users.updateOne(
+        { _id: new ObjectId(vendorId) },
+        {
+          $set: {
+            subscriptionPlan: 'premium',
+            subscriptionExpiresAt: expiresAt,
+            updatedAt: now,
+          },
+        }
+      );
+    }
+
+    res.json({
+      success: true,
+      message: 'Stripe payment verified successfully! Premium active.',
+      paid: true,
+      subscriptionPlan: 'premium',
+    });
+  } catch (error) {
+    console.error('Error verifying Stripe session:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // ==========================================
 // 2. STRIPE WEBHOOK LISTENER

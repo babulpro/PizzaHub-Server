@@ -48,7 +48,9 @@ export async function verifyToken(req, res, next) {
       });
     }
 
-    const user = await collections.users.findOne(userQuery);
+    const user = await collections.users.findOne(userQuery, {
+      projection: { password: 0 },
+    });
 
     if (!user) {
       return res.status(401).json({

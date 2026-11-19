@@ -139,10 +139,18 @@ router.post('/', verifyToken, verifyRole('vendor'), async (req, res) => {
     } = req.body || {};
 
     // Validation
-    if (!itemName || !category || !description || !price || !location) {
+    if (!itemName || !category || !description || price === undefined || !location) {
       return res.status(400).json({
         success: false,
         message: 'Please provide itemName, category, description, price, and location.',
+      });
+    }
+
+    const numPrice = Number(price);
+    if (isNaN(numPrice) || numPrice <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Price must be a valid positive number.',
       });
     }
 
@@ -223,7 +231,16 @@ router.patch('/:id', verifyToken, verifyRole('vendor'), async (req, res) => {
     if (itemName) updateFields.itemName = itemName.trim();
     if (category) updateFields.category = category.trim();
     if (description) updateFields.description = description.trim();
-    if (price !== undefined) updateFields.price = Number(price);
+    if (price !== undefined) {
+      const numPrice = Number(price);
+      if (isNaN(numPrice) || numPrice <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Price must be a valid positive number.',
+        });
+      }
+      updateFields.price = numPrice;
+    }
     if (location) updateFields.location = location.trim();
     if (Array.isArray(images) && images.length > 0) updateFields.images = images;
     if (prepTime) updateFields.prepTime = prepTime;

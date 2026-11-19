@@ -1,14 +1,13 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
-import authRoutes from './routes/auth.js'; // 1. Added import
+import authRoutes from './routes/auth.js';
 import menuRoutes from './routes/menu.js';
 import orderRoutes from './routes/orders.js';
 import stripeRoutes from './routes/stripe.js';
 import userRoutes from './routes/user.js';
-
-dotenv.config();
+import transactionRoutes from './routes/transactions.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -58,6 +57,7 @@ app.use('/api/menu', menuRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/transactions', transactionRoutes)
 // 5. Global 404 Route Handler
 app.use((req, res) => {
   res.status(404).json({
