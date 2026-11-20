@@ -5,6 +5,13 @@ import { verifyToken, verifyRole } from '../middlewares/auth.js';
 
 const router = express.Router();
 
+// Helper: Check if a vendor has an active, non-expired Premium subscription
+function isVendorPremium(user) {
+  if (!user || user.subscriptionPlan !== 'premium') return false;
+  if (!user.subscriptionExpiresAt) return true; // Active without explicit expiration
+  return new Date(user.subscriptionExpiresAt) > new Date();
+}
+
 // ==========================================
 // 1. PUBLIC ROUTES (Anyone can access)
 // ==========================================
@@ -65,11 +72,26 @@ router.get('/', async (req, res) => {
             'vendor.isBlocked': 0,
           },
         },
-        // Sort: Premium vendors first, then apply user-requested sort (e.g. price)
+        // Sort: Active Premium vendors first, then apply user-requested sort (e.g. price)
         {
           $addFields: {
             isPremium: {
-              $cond: [{ $eq: ['$vendor.subscriptionPlan', 'premium'] }, 1, 0],
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$vendor.subscriptionPlan', 'premium'] },
+                    {
+                      $or: [
+                        { $eq: [{ $type: '$vendor.subscriptionExpiresAt' }, 'missing'] },
+                        { $eq: ['$vendor.subscriptionExpiresAt', null] },
+                        { $gt: ['$vendor.subscriptionExpiresAt', new Date()] },
+                      ],
+                    },
+                  ],
+                },
+                1,
+                0,
+              ],
             },
           },
         },
@@ -98,19 +120,78 @@ router.get('/', async (req, res) => {
 // ==========================================
 
 /**
+ * GET /api/menu/vendor/quota
+ * Fast endpoint for UI checks before displaying "Add Pizza" buttons/forms
+ */
+router.get('/vendor/quota', verifyToken, verifyRole('vendor'), async (req, res) => {
+  try {
+    const isPremium = isVendorPremium(req.user);
+    const vendorIds = [
+      req.user._id,
+      ObjectId.isValid(req.user._id) ? new ObjectId(req.user._id) : null,
+      req.user._id.toString(),
+    ].filter(Boolean);
+
+    const activeCount = await collections.menuItems.countDocuments({
+      vendorId: { $in: vendorIds },
+      status: { $in: ['approved', 'pending'] },
+    });
+
+    const limit = isPremium ? 'unlimited' : 3;
+    const remaining = isPremium ? 'unlimited' : Math.max(0, 3 - activeCount);
+    const canAddMore = isPremium || activeCount < 3;
+
+    res.json({
+      success: true,
+      plan: isPremium ? 'premium' : 'free',
+      isPremium,
+      activeCount,
+      limit,
+      remaining,
+      canAddMore,
+    });
+  } catch (error) {
+    console.error('Error checking vendor quota:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * GET /api/menu/vendor/my-items
- * Get all items created by the logged-in vendor
+ * Get all items created by the logged-in vendor with live quota metrics
  */
 router.get('/vendor/my-items', verifyToken, verifyRole('vendor'), async (req, res) => {
   try {
+    const vendorIds = [
+      req.user._id,
+      ObjectId.isValid(req.user._id) ? new ObjectId(req.user._id) : null,
+      req.user._id.toString(),
+    ].filter(Boolean);
+
     const items = await collections.menuItems
-      .find({ vendorId: req.user._id })
+      .find({ vendorId: { $in: vendorIds } })
       .sort({ createdAt: -1 })
       .toArray();
+
+    const isPremium = isVendorPremium(req.user);
+    const activeCount = items.filter((i) =>
+      ['approved', 'pending'].includes(i.status)
+    ).length;
+    const limit = isPremium ? 'unlimited' : 3;
+    const remaining = isPremium ? 'unlimited' : Math.max(0, 3 - activeCount);
+    const canAddMore = isPremium || activeCount < 3;
 
     res.json({
       success: true,
       count: items.length,
+      quota: {
+        plan: isPremium ? 'premium' : 'free',
+        isPremium,
+        activeCount,
+        limit,
+        remaining,
+        canAddMore,
+      },
       data: items,
     });
   } catch (error) {
@@ -161,10 +242,17 @@ router.post('/', verifyToken, verifyRole('vendor'), async (req, res) => {
       });
     }
 
-    // Check Free Plan item quota (max 3 active or pending items)
-    if (req.user.subscriptionPlan !== 'premium') {
+    // Check Free Plan item quota (max 3 active or pending items for non-premium vendors)
+    const isPremium = isVendorPremium(req.user);
+    if (!isPremium) {
+      const vendorIds = [
+        req.user._id,
+        ObjectId.isValid(req.user._id) ? new ObjectId(req.user._id) : null,
+        req.user._id.toString(),
+      ].filter(Boolean);
+
       const activeCount = await collections.menuItems.countDocuments({
-        vendorId: req.user._id,
+        vendorId: { $in: vendorIds },
         status: { $in: ['approved', 'pending'] },
       });
 
@@ -172,6 +260,12 @@ router.post('/', verifyToken, verifyRole('vendor'), async (req, res) => {
         return res.status(403).json({
           success: false,
           message: 'Free plan limit reached (max 3 active items). Please upgrade to Premium for unlimited items.',
+          quota: {
+            plan: 'free',
+            activeCount,
+            limit: 3,
+            canAddMore: false,
+          },
         });
       }
     }
@@ -293,15 +387,29 @@ router.patch('/:id/toggle', verifyToken, verifyRole('vendor'), async (req, res) 
     const newStatus = item.status === 'approved' ? 'inactive' : 'approved';
 
     // If activating on free plan, ensure <= 3 active items
-    if (newStatus === 'approved' && req.user.subscriptionPlan !== 'premium') {
+    const isPremium = isVendorPremium(req.user);
+    if (newStatus === 'approved' && !isPremium) {
+      const vendorIds = [
+        req.user._id,
+        ObjectId.isValid(req.user._id) ? new ObjectId(req.user._id) : null,
+        req.user._id.toString(),
+      ].filter(Boolean);
+
       const activeCount = await collections.menuItems.countDocuments({
-        vendorId: req.user._id,
+        vendorId: { $in: vendorIds },
         status: { $in: ['approved', 'pending'] },
       });
+
       if (activeCount >= 3) {
         return res.status(403).json({
           success: false,
           message: 'Free plan limit reached (max 3 active items). Deactivate another item or upgrade to Premium.',
+          quota: {
+            plan: 'free',
+            activeCount,
+            limit: 3,
+            canAddMore: false,
+          },
         });
       }
     }
