@@ -25,9 +25,9 @@ router.get('/', async (req, res) => {
   try {
     const { search, category, location, sortBy } = req.query;
 
-    // Filter only approved and active items for public view
+    // Filter only active items for public view (approved or live items)
     const matchQuery = {
-      status: 'approved',
+      status: { $in: ['approved', 'pending'] },
     };
 
     if (category && category !== 'all') {
@@ -281,7 +281,7 @@ router.post('/', verifyToken, verifyRole('vendor'), async (req, res) => {
       prepTime: prepTime || '20-25 min',
       isSpicy: Boolean(isSpicy),
       isVegetarian: Boolean(isVegetarian),
-      status: 'pending', // Default status is pending until Admin approves
+      status: 'approved', // Published items are live immediately on the menu and home page
       createdAt: new Date(),
     };
 
@@ -289,7 +289,7 @@ router.post('/', verifyToken, verifyRole('vendor'), async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Menu item submitted successfully! It is pending admin approval.',
+      message: 'Menu item published successfully and is now live on the menu!',
       data: { _id: result.insertedId, ...newItem },
     });
   } catch (error) {
